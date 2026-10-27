@@ -31,12 +31,11 @@ const INITIAL_CHAIN_KEY: [u8; KEY_LEN] = [
 ];
 
 // initiator.chaining_hash = HASH(initiator.chaining_key || IDENTIFIER)
-// CorpLink/feilian uses a custom WireGuard IDENTIFIER "CorpLink v1 vpn@feilian-----------"
-// instead of the stock "WireGuard v1 zx2c4 Jason@zx2c4.com". INITIAL_CHAIN_HASH is
-// HASH(INITIAL_CHAIN_KEY || IDENTIFIER); recomputed here for the CorpLink identifier.
+// Stock WireGuard identifier. `Tunn::new_with_identifier` lets a caller supply
+// a different one (e.g. CorpLink/feilian) and recomputes this hash from it.
 const INITIAL_CHAIN_HASH: [u8; KEY_LEN] = [
-    186, 228, 33, 60, 67, 223, 32, 15, 54, 120, 13, 167, 154, 201, 32, 79, 253, 141, 18, 64, 134,
-    163, 140, 145, 170, 78, 129, 226, 202, 87, 171, 57,
+    34, 17, 179, 97, 8, 26, 197, 102, 105, 18, 67, 219, 69, 138, 213, 50, 45, 156, 108, 102, 34,
+    147, 232, 183, 14, 225, 156, 101, 186, 7, 158, 243,
 ];
 
 #[inline]
@@ -243,6 +242,8 @@ struct NoiseParams {
     static_shared: x25519::SharedSecret,
     /// A pre-computation of HASH("mac1----", peer_static_public) for this peer
     sending_mac1_key: [u8; KEY_LEN],
+    /// HASH(INITIAL_CHAIN_KEY || IDENTIFIER) for the handshake identifier in use
+    initial_chain_hash: [u8; KEY_LEN],
     /// An optional preshared key
     preshared_key: Option<[u8; KEY_LEN]>,
 }
@@ -255,6 +256,7 @@ impl std::fmt::Debug for NoiseParams {
             .field("peer_static_public", &self.peer_static_public)
             .field("static_shared", &"<redacted>")
             .field("sending_mac1_key", &self.sending_mac1_key)
+            .field("initial_chain_hash", &self.initial_chain_hash)
             .field("preshared_key", &self.preshared_key)
             .finish()
     }
@@ -378,10 +380,18 @@ impl NoiseParams {
         static_public: x25519::PublicKey,
         peer_static_public: x25519::PublicKey,
         preshared_key: Option<[u8; 32]>,
+        handshake_identifier: Option<&[u8]>,
     ) -> NoiseParams {
         let static_shared = static_private.diffie_hellman(&peer_static_public);
 
         let initial_sending_mac_key = b2s_hash(LABEL_MAC1, peer_static_public.as_bytes());
+
+        // Stock WireGuard uses INITIAL_CHAIN_HASH; protocol variants (e.g.
+        // CorpLink/feilian) derive it from their own identifier instead.
+        let initial_chain_hash = match handshake_identifier {
+            Some(identifier) => b2s_hash(&INITIAL_CHAIN_KEY, identifier),
+            None => INITIAL_CHAIN_HASH,
+        };
 
         NoiseParams {
             static_public,
@@ -389,6 +399,7 @@ impl NoiseParams {
             peer_static_public,
             static_shared,
             sending_mac1_key: initial_sending_mac_key,
+            initial_chain_hash,
             preshared_key,
         }
     }
@@ -417,12 +428,14 @@ impl Handshake {
         peer_static_public: x25519::PublicKey,
         global_idx: u32,
         preshared_key: Option<[u8; 32]>,
+        handshake_identifier: Option<&[u8]>,
     ) -> Handshake {
         let params = NoiseParams::new(
             static_private,
             static_public,
             peer_static_public,
             preshared_key,
+            handshake_identifier,
         );
 
         Handshake {
@@ -489,7 +502,7 @@ impl Handshake {
         // initiator.chaining_key = HASH(CONSTRUCTION)
         let mut chaining_key = INITIAL_CHAIN_KEY;
         // initiator.hash = HASH(HASH(initiator.chaining_key || IDENTIFIER) || responder.static_public)
-        let mut hash = INITIAL_CHAIN_HASH;
+        let mut hash = self.params.initial_chain_hash;
         hash = b2s_hash(&hash, self.params.static_public.as_bytes());
         // msg.sender_index = little_endian(initiator.sender_index)
         let peer_index = packet.sender_idx;
@@ -728,7 +741,7 @@ impl Handshake {
         // initiator.chaining_key = HASH(CONSTRUCTION)
         let mut chaining_key = INITIAL_CHAIN_KEY;
         // initiator.hash = HASH(HASH(initiator.chaining_key || IDENTIFIER) || responder.static_public)
-        let mut hash = INITIAL_CHAIN_HASH;
+        let mut hash = self.params.initial_chain_hash;
         hash = b2s_hash(&hash, self.params.peer_static_public.as_bytes());
         // initiator.ephemeral_private = DH_GENERATE()
         let ephemeral_private = x25519::ReusableSecret::random_from_rng(OsRng);

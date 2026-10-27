@@ -199,6 +199,32 @@ impl Tunn {
         index: u32,
         rate_limiter: Option<Arc<RateLimiter>>,
     ) -> Self {
+        Self::new_with_identifier(
+            static_private,
+            peer_static_public,
+            preshared_key,
+            persistent_keepalive,
+            index,
+            rate_limiter,
+            None,
+        )
+    }
+
+    /// Like [`Tunn::new`], but with a custom Noise handshake identifier.
+    ///
+    /// The identifier is hashed with the initial chaining key to derive the
+    /// handshake's initial chain hash. `None` keeps stock WireGuard
+    /// (`"WireGuard v1 zx2c4 Jason@zx2c4.com"`); protocol variants such as
+    /// CorpLink/feilian pass their own identifier here.
+    pub fn new_with_identifier(
+        static_private: x25519::StaticSecret,
+        peer_static_public: x25519::PublicKey,
+        preshared_key: Option<[u8; 32]>,
+        persistent_keepalive: Option<u16>,
+        index: u32,
+        rate_limiter: Option<Arc<RateLimiter>>,
+        handshake_identifier: Option<&[u8]>,
+    ) -> Self {
         let static_public = x25519::PublicKey::from(&static_private);
 
         Tunn {
@@ -208,6 +234,7 @@ impl Tunn {
                 peer_static_public,
                 index << 8,
                 preshared_key,
+                handshake_identifier,
             ),
             sessions: Default::default(),
             current: Default::default(),
