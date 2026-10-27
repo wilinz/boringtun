@@ -31,9 +31,12 @@ const INITIAL_CHAIN_KEY: [u8; KEY_LEN] = [
 ];
 
 // initiator.chaining_hash = HASH(initiator.chaining_key || IDENTIFIER)
+// CorpLink/feilian uses a custom WireGuard IDENTIFIER "CorpLink v1 vpn@feilian-----------"
+// instead of the stock "WireGuard v1 zx2c4 Jason@zx2c4.com". INITIAL_CHAIN_HASH is
+// HASH(INITIAL_CHAIN_KEY || IDENTIFIER); recomputed here for the CorpLink identifier.
 const INITIAL_CHAIN_HASH: [u8; KEY_LEN] = [
-    34, 17, 179, 97, 8, 26, 197, 102, 105, 18, 67, 219, 69, 138, 213, 50, 45, 156, 108, 102, 34,
-    147, 232, 183, 14, 225, 156, 101, 186, 7, 158, 243,
+    186, 228, 33, 60, 67, 223, 32, 15, 54, 120, 13, 167, 154, 201, 32, 79, 253, 141, 18, 64, 134,
+    163, 140, 145, 170, 78, 129, 226, 202, 87, 171, 57,
 ];
 
 #[inline]
